@@ -1,5 +1,5 @@
 # KTU Academics RAG Chatbot
-An AI-based chatbot built using Retrieval-Augmented Generation (RAG) that enables students to ask questions related to KTU (Kerala Technological University) academics. The chatbot leverages document embeddings and semantic search to provide accurate answers from a curated knowledge base of notes, previous year questions (PYQs), and academic materials.
+An AI-based chatbot built using Retrieval-Augmented Generation (RAG) that enables students to ask questions related to KTU (Kerala Technological University) academics. The chatbot leverages document embeddings and semantic search to provide accurate answers from a curated knowledge base of notes, previous year questions (PYQs), and academic materials. 
 
 ## Setup Instructions
 
