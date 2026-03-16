@@ -57,3 +57,5 @@ An AI-based chatbot built using Retrieval-Augmented Generation (RAG) that enable
 - **SentenceTransformers**: Embedding generation
 - **ChromaDB**: Vector database (to be integrated)
 - **Python 3.11.9**: Runtime environment
+
+-----------------------------------------------------
