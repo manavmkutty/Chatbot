@@ -8,6 +8,10 @@ __pycache__/
 venv/
 .venv/
 
+# Environment variables
+.env
+api.env
+
 # Data / outputs
 data/chromadb_data/
 

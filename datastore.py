@@ -1,80 +1,88 @@
-from langchain_community.document_loaders import DirectoryLoader
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
 import os
 import shutil
-import chromadb
 import uuid
+from langchain_community.document_loaders import DirectoryLoader, PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from sentence_transformers import SentenceTransformer
+import chromadb
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Configuration
+# ──────────────────────────────────────────────────────────────────────────────
+DATA_DIR      = "./data"
+CHROMA_PATH   = "./data/chromadb_data"
+REBUILD_INDEX = True                  # Set False after first run to skip re-indexing
+
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+CHUNK_SIZE    = 800
+CHUNK_OVERLAP = 150
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Shared objects (imported by chat.py)
+# ──────────────────────────────────────────────────────────────────────────────
+embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+
+if REBUILD_INDEX and os.path.exists(CHROMA_PATH):
+    shutil.rmtree(CHROMA_PATH)
+
+_client = chromadb.PersistentClient(path=CHROMA_PATH)
+collection = _client.get_or_create_collection(
+    name="documents_collection",
+    metadata={"hnsw:space": "cosine"}
+)
 
 
-REBUILD_INDEX = True
-
-chroma_path = "./data/chromadb_data"
-
-if REBUILD_INDEX and os.path.exists(chroma_path):
-    shutil.rmtree(chroma_path)
-
-client = chromadb.PersistentClient(path = chroma_path)
-
-collection = client.get_or_create_collection(name="documents_collection" , 
-                                             metadata = {"hnsw:space": "cosine"})
-
-
+# ──────────────────────────────────────────────────────────────────────────────
+# Public API
+# ──────────────────────────────────────────────────────────────────────────────
 def load_data_to_chromadb():
+    """Load PDFs, chunk them, embed and store in ChromaDB."""
     if not REBUILD_INDEX:
         print("Index already exists. Skipping data loading.")
         return
-    
-    documents = load_documents()
-    chunks = chunking_docs(documents)
 
-    embedding_model = SentenceTransformer('all-MiniLM-L6-v2')   #initialised an embedding model for embedding process
+    documents = _load_documents()
+    chunks    = _chunk_documents(documents)
 
-    for each_chunk in chunks:   #loop through each chunk to generate embeddings for each chunk
-        embeddings = embedding_function(each_chunk.page_content , embedding_model)  #this each embeddings can be stored in chromadb with the chunk metadata
-        #store each_chunk and embeddings to chromadb here
-        store_in_chromadb(each_chunk , embeddings , collection)
+    print("Generating embeddings and storing in ChromaDB …")
+    for chunk in chunks:
+        emb = embedding_function(chunk.page_content, embedding_model)
+        _store_in_chromadb(chunk, emb)
 
-    print(f"Stored {collection.count()} chunks in ChromaDB collection.")
+    print(f"Stored {collection.count()} chunks in ChromaDB.\n")
 
-#method to load docs from the directory
-def load_documents():
-    loader_obj = DirectoryLoader(path="./data" , glob="*.pdf" , loader_cls= PyPDFLoader)
-    return loader_obj.load()
 
-#method to chunk the loaded documents
-def chunking_docs(documents):
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size = 800,
-        chunk_overlap = 150,
-        length_function = len , 
-        add_start_index = True
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
+def embedding_function(text: str, model: SentenceTransformer):
+    """Embed a single text string using the shared SentenceTransformer model."""
+    return model.encode(text)
+
+
+def _load_documents():
+    loader = DirectoryLoader(path=DATA_DIR, glob="*.pdf", loader_cls=PyPDFLoader)
+    docs = loader.load()
+    print(f"Loaded {len(docs)} page(s) from '{DATA_DIR}'")
+    return docs
+
+
+def _chunk_documents(documents):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        length_function=len,
+        add_start_index=True,
     )
-
-    chunks = text_splitter.split_documents(documents)
-    print(f"Splitted {len(documents)} into {len(chunks)} chunks")
-    print("\n\n")
-
-    # print("Sample chunk")
-    # print(chunks[60].page_content)
-    # print(f"page number: {chunks[60].metadata['page']}")
-
-    return chunks 
+    chunks = splitter.split_documents(documents)
+    print(f"Split into {len(chunks)} chunks (size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP})")
+    return chunks
 
 
-
-#method to generate embeddings for the chunks may use for encoding querries also 
-def embedding_function(text_to_be_embedded , embedding_model):
-    return embedding_model.encode(text_to_be_embedded)
-
-def store_in_chromadb(chunk , embeddings , collection):
-
-    doc_id = str(uuid.uuid4())
-
+def _store_in_chromadb(chunk, embeddings):
     collection.add(
-        ids = [doc_id],
-        documents = [chunk.page_content] , 
-        embeddings = [embeddings.tolist()] , 
-        metadatas = [chunk.metadata]
+        ids=[str(uuid.uuid4())],
+        documents=[chunk.page_content],
+        embeddings=[embeddings.tolist()],
+        metadatas=[chunk.metadata],
     )
